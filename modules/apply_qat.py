@@ -55,15 +55,22 @@ def apply_QAT(layer, precision=8, mode='attention'):
                 key = nn.functional.linear(hidden_states, key_weight, self.layer.key.bias)
                 value = nn.functional.linear(hidden_states, value_weight, self.layer.value.bias)
                 
-                # # Quantize query, key, value
-                # query_scale, query_zp = self.calculate_scale_zp(query.min(), query.max(), qmin, qmax)
-                # key_scale, key_zp = self.calculate_scale_zp(key.min(), key.max(), qmin, qmax)
-                # value_scale, value_zp = self.calculate_scale_zp(value.min(), value.max(), qmin, qmax)
+                # Quantize query, key, value
+                query_scale, query_zp = self.calculate_scale_zp(query.min(), query.max(), qmin, qmax)
+                key_scale, key_zp = self.calculate_scale_zp(key.min(), key.max(), qmin, qmax)
+                value_scale, value_zp = self.calculate_scale_zp(value.min(), value.max(), qmin, qmax)
                 
-                # query = self.apply_fake_quant(query, query_scale, query_zp, qmin, qmax)
-                # key = self.apply_fake_quant(key, key_scale, key_zp, qmin, qmax)
-                # value = self.apply_fake_quant(value, value_scale, value_zp, qmin, qmax)
+                query = self.apply_fake_quant(query, query_scale, query_zp, qmin, qmax)
+                key = self.apply_fake_quant(key, key_scale, key_zp, qmin, qmax)
+                value = self.apply_fake_quant(value, value_scale, value_zp, qmin, qmax)
                 
+                # assert q, k, v does not containe nan or inf
+                if torch.isnan(query).any() or torch.isnan(key).any() or torch.isnan(value).any():
+                    print("query, key, value contains nan")
+                if torch.isinf(query).any() or torch.isinf(key).any() or torch.isinf(value).any():
+                    print("query, key, value contains inf")
+                # 왜  q, k, v의 결과(hiddens_states를 곱한 결과물)을 양자화하니 validation.loss가 nan이 되는지 확인 필요
+                # 일단 q,k,v 결과물이 nan이나 inf를 포함하지는 않는 것을 확인했음
                 
                 
                 # Weight tensor의 requires_grad 확인

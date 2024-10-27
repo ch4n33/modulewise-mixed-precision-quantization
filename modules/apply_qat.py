@@ -93,9 +93,9 @@ def apply_QAT(layer, precision=8, mode='attention'):
                 quantized_attention_probs = self.apply_fake_quant(attention_probs, ap_scale, ap_zp, qmin, qmax)
                 
                 attention_output = torch.matmul(quantized_attention_probs, value)
-                ao_scale, ao_zp = self.calculate_scale_zp(attention_output.min(), attention_output.max(), qmin, qmax)
-                
-                attention_output = self.apply_fake_quant(attention_output, ao_scale, ao_zp, qmin, qmax)
+
+                # ao_scale, ao_zp = self.calculate_scale_zp(attention_output.min(), attention_output.max(), qmin, qmax)
+                # attention_output = self.apply_fake_quant(attention_output, ao_scale, ao_zp, qmin, qmax)
                 return (attention_output, )
             elif self.mode == 'ffn':
                 # FFN의 weight 양자화

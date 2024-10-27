@@ -12,8 +12,9 @@ def apply_QAT(layer, precision=8, mode='attention'):
             self.layer.requires_grad_(True)  # 양자화 레이어의 gradient 활성화
         
         def calculate_scale_zp(self, min,max, qmin, qmax):
-            scale = (max - min) / (qmax - qmin)
-            zero_point = qmin - STERoundFunction.apply(min / scale)
+            with torch.no_grad():
+                scale = (max - min) / (qmax - qmin)
+                zero_point = qmin - STERoundFunction.apply(min / scale)
             return scale, zero_point
         def apply_fake_quant(self, tensor, scale, zero_point, qmin, qmax):
             quantized = STERoundFunction.apply(tensor / scale + zero_point)
@@ -21,6 +22,13 @@ def apply_QAT(layer, precision=8, mode='attention'):
             
             fake_quantized = (quantized - zero_point) * scale
             return fake_quantized
+        
+        def apply_weight_fake_quant(self, weight, qmin, qmax):
+            # weight의 min, max 값으로 scale, zero_point 계산
+            weight_scale, weight_zp = self.calculate_scale_zp(weight.min(), weight.max(), qmin, qmax)
+            quantized_weight = self.apply_fake_quant(weight, weight_scale, weight_zp, qmin, qmax)
+            return quantized_weight
+        
         def forward(self, hidden_states, *args, **kwargs):
             # `requires_grad`와 `grad_fn`을 체크하는 코드
             # if hidden_states.requires_grad:
@@ -31,19 +39,30 @@ def apply_QAT(layer, precision=8, mode='attention'):
             # 양자화 적용
             qmax = (2 ** (self.bits-1)) - 1
             qmin = -(2 ** (self.bits-1))
+            
+            # input value quantization
+            hidden_states_scale, hidden_states_zp = self.calculate_scale_zp(hidden_states.min(), hidden_states.max(), qmin, qmax)
+            hidden_states = self.apply_fake_quant(hidden_states, hidden_states_scale, hidden_states_zp, qmin, qmax)
+            
             if self.mode == 'attention':
-                query = self.layer.query(hidden_states)
-                key = self.layer.key(hidden_states)
-                value = self.layer.value(hidden_states)
+                # Attention weights 양자화
+                query_weight = self.apply_weight_fake_quant(self.layer.query.weight, qmin, qmax)
+                key_weight = self.apply_weight_fake_quant(self.layer.key.weight, qmin, qmax)
+                value_weight = self.apply_weight_fake_quant(self.layer.value.weight, qmin, qmax)
                 
-                # Quantize query, key, value
-                query_scale, query_zp = self.calculate_scale_zp(query.min(), query.max(), qmin, qmax)
-                key_scale, key_zp = self.calculate_scale_zp(key.min(), key.max(), qmin, qmax)
-                value_scale, value_zp = self.calculate_scale_zp(value.min(), value.max(), qmin, qmax)
+                # Query, Key, Value 연산에서 양자화된 weight 사용
+                query = nn.functional.linear(hidden_states, query_weight, self.layer.query.bias)
+                key = nn.functional.linear(hidden_states, key_weight, self.layer.key.bias)
+                value = nn.functional.linear(hidden_states, value_weight, self.layer.value.bias)
                 
-                query = self.apply_fake_quant(query, query_scale, query_zp, qmin, qmax)
-                key = self.apply_fake_quant(key, key_scale, key_zp, qmin, qmax)
-                value = self.apply_fake_quant(value, value_scale, value_zp, qmin, qmax)
+                # # Quantize query, key, value
+                # query_scale, query_zp = self.calculate_scale_zp(query.min(), query.max(), qmin, qmax)
+                # key_scale, key_zp = self.calculate_scale_zp(key.min(), key.max(), qmin, qmax)
+                # value_scale, value_zp = self.calculate_scale_zp(value.min(), value.max(), qmin, qmax)
+                
+                # query = self.apply_fake_quant(query, query_scale, query_zp, qmin, qmax)
+                # key = self.apply_fake_quant(key, key_scale, key_zp, qmin, qmax)
+                # value = self.apply_fake_quant(value, value_scale, value_zp, qmin, qmax)
                 
                 
                 
@@ -62,15 +81,25 @@ def apply_QAT(layer, precision=8, mode='attention'):
                 
                 attention_scores = torch.matmul(query, key.transpose(-1, -2)) / (query.size(-1) ** 0.5)
                 attention_probs = torch.nn.functional.softmax(attention_scores, dim=-1)
-                attention_output = torch.matmul(attention_probs, value)
+                
+                ap_scale, ap_zp = self.calculate_scale_zp(attention_probs.min(), attention_probs.max(), qmin, qmax)
+                quantized_attention_probs = self.apply_fake_quant(attention_probs, ap_scale, ap_zp, qmin, qmax)
+                
+                attention_output = torch.matmul(quantized_attention_probs, value)
+                ao_scale, ao_zp = self.calculate_scale_zp(attention_output.min(), attention_output.max(), qmin, qmax)
+                
+                attention_output = self.apply_fake_quant(attention_output, ao_scale, ao_zp, qmin, qmax)
                 return (attention_output, )
             elif self.mode == 'ffn':
-                # Linear layer를 통해 hidden_states를 계산
-                layer_output = self.layer(hidden_states)
+                # FFN의 weight 양자화
+                ffn_weight = self.apply_weight_fake_quant(self.layer.weight, qmin, qmax)
+                
+                # 양자화된 weight 사용하여 FFN forward 연산 수행
+                layer_output = nn.functional.linear(hidden_states, ffn_weight, self.layer.bias)
                 
                 # quantize
-                output_scale, output_zp = self.calculate_scale_zp(layer_output.min(), layer_output.max(), qmin, qmax)
-                layer_output = self.apply_fake_quant(layer_output, output_scale, output_zp, qmin, qmax)
+                # output_scale, output_zp = self.calculate_scale_zp(layer_output.min(), layer_output.max(), qmin, qmax)
+                # layer_output = self.apply_fake_quant(layer_output, output_scale, output_zp, qmin, qmax)
                 
                 
                 return layer_output

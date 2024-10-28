@@ -4,7 +4,7 @@ import pandas as pd
 from torch.utils.data import TensorDataset, random_split, DataLoader, RandomSampler, SequentialSampler
 from transformers import BertTokenizer, BertForSequenceClassification, AdamW, get_linear_schedule_with_warmup
 
-from modules.fixlayer_qat import fixedlayerQATBERT 
+from modules.predefined_qat import predefQATBERT 
 from modules.weight_qat import weightQATBERT
 from modules.rand_qat import randQATBERT
 from modules.train import train_model
@@ -87,14 +87,18 @@ validation_dataloader = DataLoader(
 ############################# BERT model 호출 및 준비 #############################
 epochs = 5
 
-bert_model = BertForSequenceClassification.from_pretrained("google-bert/bert-base-uncased", num_labels = 2, output_attentions = False, output_hidden_states = False,)
-#model = BertForSequenceClassification.from_pretrained("/root/MRPC/", num_labels = 2, output_attentions = False, output_hidden_states = False,)
-'''
-mixed_qat_model = predifQATBERT(bert_model, attention_bits=8, ffn_bits=4) #레이어마다 att에 8비트, ffn에 4비트 양자화
+#bert_model = BertForSequenceClassification.from_pretrained("google-bert/bert-base-uncased", num_labels = 2, output_attentions = False, output_hidden_states = False,) #xa  option
+bert_model = BertForSequenceClassification.from_pretrained("/root/MRPC/", num_labels = 2, output_attentions = False, output_hidden_states = False,) #jongchan option
 
+########################################################
+#### 주석처리된 부분에서 모델 골라쓰기! rate 변경 가능 ####
+########################################################
+'''
+
+mixed_qat_model = randQATBERT(bert_model, rate=0.7) #랜덤하게 rate%의 레이어를 전체 8비트 양자화.
 mixed_qat_model = weightQATBERT(bert_model, rate=0.7) #가중치 분포가 넓은 상위 rate%개의 sub-module을 8비트, 나머지 4비트 양자화
 '''
-mixed_qat_model = randQATBERT(bert_model, rate=0.7) #랜덤하게 rate%의 레이어를 전체 8비트 양자화.
+mixed_qat_model = predefQATBERT(bert_model, attention_bits=8, ffn_bits=4) #레이어마다 att에 8비트, ffn에 4비트 양자화
 
 
 

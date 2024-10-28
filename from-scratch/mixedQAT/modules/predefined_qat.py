@@ -1,9 +1,9 @@
 from .apply_qat import apply_QAT
 from torch import nn
 
-class fixedlayerQATBERT(nn.Module):
+class predefQATBERT(nn.Module):
     def __init__(self, model, attention_bits=8, ffn_bits=4):
-        super(fixedlayerQATBERT, self).__init__()
+        super(predefQATBERT, self).__init__()
         self.bert = model
 
         #fixed precision for specific layer. 

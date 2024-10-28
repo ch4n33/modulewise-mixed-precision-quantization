@@ -119,6 +119,7 @@ def train_model(epochs, model, train_dataloader, validation_dataloader, optimize
     torch.cuda.manual_seed_all(seed_val)
 
     training_stats = []
+    gradient_tracking = []
 
     total_t0 = time.time()
     for epoch_i in range(0, epochs):
@@ -153,10 +154,11 @@ def train_model(epochs, model, train_dataloader, validation_dataloader, optimize
             loss.backward()
             torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0)
 
-            
-            for name, param in model.named_parameters(): #tracking gradients of each parameter
+            for name, param in model.named_parameters():
                 if param.grad is not None:
-                    print(f"Layer: {name} | Gradient Norm: {param.grad.norm().item()}")
+                    gradient_norm = param.grad.norm().item()
+                    gradient_tracking.append({'Layer': name, 'Gradient Norm': gradient_norm, 'Epoch': epoch_i})
+
             
 
 
@@ -225,6 +227,10 @@ def train_model(epochs, model, train_dataloader, validation_dataloader, optimize
 
     print("======== Training complete! ========")
     print("Total training took {:} (h:mm:ss)".format(format_time(time.time()-total_t0)))
+
+    gradient_df = pd.DataFrame(gradient_tracking)
+    gradient_df.to_csv('gradient_tracking.csv', index=False)
+
     return training_stats
 
 ############################# main #############################

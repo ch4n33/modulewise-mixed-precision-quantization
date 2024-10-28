@@ -25,9 +25,8 @@ class quantize(torch.autograd.Function):
         return out
     @staticmethod
     def backward(ctx, grad_output):
-        grad_input = grad_output / ctx.scale 
 
-        return grad_input, None, None, None
+        return grad_output, None, None, None
 
 class myEmbedding(nn.Module):
     def __init__(self, vocab_size, embed_size, dropout, bits):
@@ -39,11 +38,11 @@ class myEmbedding(nn.Module):
 
     def forward(self, token_ids):
         token_embeds = self.token_embedding(token_ids)
-        print(f"embedded token: {token_embeds}")
+        #print(f"embedded token: {token_embeds}")
 
-        #qmin, qmax, scale = quantize.scaling(token_embeds, self.bits)
+        qmin, qmax, scale = quantize.scaling(token_embeds, self.bits)
         #print(f"scale at embedding: {scale}")
-        #q_embeds = quantize.apply(token_embeds, scale, qmin, qmax)
+        q_embeds = quantize.apply(token_embeds, scale, qmin, qmax)
 
 
         return self.dropout(token_embeds)
@@ -67,15 +66,12 @@ class multiHeadedAttention(nn.Module):
 
         #quantization
         qu_qmin, qu_qmax, qu_scale = quantize.scaling(query, self.bits)
-        print(f"scale at att:query: {qu_scale}")
         q_query = quantize.apply(query, qu_scale, qu_qmin, qu_qmax)
 
         key_qmin, key_qmax, key_scale = quantize.scaling(key, self.bits)
-        print(f"scale at att:key: {key_scale}")
         q_key = quantize.apply(key, key_scale, key_qmin, key_qmax)
 
         va_qmin, va_qmax, va_scale = quantize.scaling(value, self.bits)
-        print(f"scale at att:value: {va_scale}")
         q_value = quantize.apply(value, va_scale, va_qmin, va_qmax)
 
         #linear projections
@@ -89,7 +85,6 @@ class multiHeadedAttention(nn.Module):
 
         probs = F.softmax(scores, dim=-1) #attention_probs
         p_qmin, p_qmax, p_scale = quantize.scaling(probs, self.bits)
-        print(f"scale at att:prons: {p_scale}")
         q_probs = quantize.apply(probs, p_scale, p_qmin, p_qmax)
 
         if self.dropout is not None: p_attn = self.dropout(probs)
@@ -97,7 +92,6 @@ class multiHeadedAttention(nn.Module):
      
         output = torch.matmul(p_attn, value) #attention_output
         o_qmin, o_qmax, o_scale = quantize.scaling(output, self.bits)
-        print(f"scale at att:output: {o_scale}")
         q_output = quantize.apply(output, o_scale, o_qmin, o_qmax)
 
         output = q_output.transpose(1, 2).contiguous().view(batch_size, -1, self.h * self.d_k)
@@ -120,7 +114,6 @@ class feedForwardNetwork(nn.Module):
         #print("-------------------------")
         #print(x.shape)
         qmin, qmax, scale = quantize.scaling(x, self.bits)
-        print(f"scale at ffn: {scale}")
         x = quantize.apply(x, scale, qmin, qmax)
         tmp = self.w_1(x)
         #print(f"w_1 shape: {tmp.shape}")
@@ -130,7 +123,6 @@ class feedForwardNetwork(nn.Module):
         #print(f"w_2 shape: {tmp.shape}")
     
         qmin_, qmax_, scale_ = quantize.scaling(tmp, self.bits)
-        print(f"scale at ffn:output: {scale_}")
         output = quantize.apply(tmp, scale_, qmin_, qmax_)
       
         return output

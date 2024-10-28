@@ -96,6 +96,9 @@ def apply_QAT(layer, precision=8, mode='attention'):
 
                 # ao_scale, ao_zp = self.calculate_scale_zp(attention_output.min(), attention_output.max(), qmin, qmax)
                 # attention_output = self.apply_fake_quant(attention_output, ao_scale, ao_zp, qmin, qmax)
+
+                # apply dropout to attention_output
+                attention_output = self.layer.dropout(attention_output)
                 return (attention_output, )
             elif self.mode == 'ffn':
                 # FFN의 weight 양자화
@@ -107,11 +110,22 @@ def apply_QAT(layer, precision=8, mode='attention'):
                 # quantize
                 # output_scale, output_zp = self.calculate_scale_zp(layer_output.min(), layer_output.max(), qmin, qmax)
                 # layer_output = self.apply_fake_quant(layer_output, output_scale, output_zp, qmin, qmax)
-                
-                
                 return layer_output
-
             return self.layer(hidden_states, *args, **kwargs)
 
-    quant_layer = CustomQuantizationLayer(layer=layer, bits=precision)
+    class CustomQuantizationEmbeddingLayer(CustomQuantizationLayer):
+        def forward(self, input_ids, *args, **kwargs):
+            qmin = -(2 ** (self.bits-1))
+            qmax = (2 ** (self.bits-1)) - 1
+            # Word Embedding weight 양자화
+            word_embeddings = self.apply_weight_fake_quant(self.layer.weight, qmin, qmax)
+            
+            # 양자화된 weight 사용하여 Embedding forward 연산 수행
+            word_embeddings = nn.functional.embedding(input_ids, word_embeddings)
+            
+            return word_embeddings
+    if mode == 'attention' or mode == 'ffn':
+        quant_layer = CustomQuantizationLayer(layer=layer, bits=precision)
+    elif mode == 'embedding':
+        quant_layer = CustomQuantizationEmbeddingLayer(layer=layer, bits=precision)
     return quant_layer

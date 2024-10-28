@@ -1,12 +1,14 @@
-
 from .apply_qat import apply_QAT
 from torch import nn
 
-class MixedQATBERT(nn.Module):
+class fixedlayerQATBERT(nn.Module):
     def __init__(self, model, attention_bits=8, ffn_bits=4):
-        super(MixedQATBERT, self).__init__()
+        super(fixedlayerQATBERT, self).__init__()
         self.bert = model
-        # 각 레이어마다 attention과 FFN에 다른 quantization 적용
+
+        #fixed precision for specific layer. 
+        #각 레이어마다 attention은 8bit로 FFN은 4비트로 quantize
+        
         for layer in self.bert.bert.encoder.layer:
             layer.attention.self = apply_QAT(layer.attention.self, precision = attention_bits, mode = 'attention')
 

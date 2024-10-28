@@ -10,6 +10,8 @@ from tqdm import tqdm
 from torch.utils.data import TensorDataset, random_split, DataLoader, RandomSampler, SequentialSampler
 from transformers import BertTokenizer, BertForSequenceClassification, AdamW, get_linear_schedule_with_warmup
 from datasets import load_dataset
+from sklearn.metrics import accuracy_score, classification_report
+from torch.optim.lr_scheduler import ReduceLROnPlateau
 
 from model import myBERT
 
@@ -22,7 +24,7 @@ else:
 print(f"using %s" % device)
 
 ############################# 데이터 준비 및 전처리 #############################
-df = pd.read_csv("./cola_public/raw/in_domain_train.tsv", delimiter='\t', header=None, names=['sentence_source', 'label', 'label_notes', 'sentence'])
+df = pd.read_csv("./data/cola_public/raw/in_domain_train.tsv", delimiter='\t', header=None, names=['sentence_source', 'label', 'label_notes', 'sentence'])
 
 # Get the lists of sentences and their labels.
 sentences = df.sentence.values
@@ -94,11 +96,12 @@ print("Loading BERT model...")
 model = myBERT(vocab_size = tokenizer.vocab_size)
 model.cuda()
 
-epochs = 5
+epochs = 3
 total_steps = len(train_dataloader) * epochs
 
 optimizer = AdamW(model.parameters(), lr=2e-5, eps=1e-8)
-scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0, num_training_steps=total_steps)
+#scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=0, num_training_steps=total_steps)
+scheduler = ReduceLROnPlateau(optimizer, factor=0.1, patience=2)  # patience 동안 개선되지 않으면 학습률*factor
 
 def flat_accuracy(preds, labels):
     pred_flat = np.argmax(preds, axis=1).flatten()
@@ -142,7 +145,7 @@ def train_model(epochs, model, train_dataloader, validation_dataloader, optimize
             output = model(b_input_ids, 
                             attention_mask=b_input_mask, 
                             labels=b_labels)
-
+            
             loss, logits = output
             '''
             loss = output.loss
@@ -163,7 +166,8 @@ def train_model(epochs, model, train_dataloader, validation_dataloader, optimize
 
 
             optimizer.step()
-            scheduler.step()
+            scheduler.step(loss.item()) 
+            #scheduler.step()
 
         avg_train_loss = total_train_loss / len(train_dataloader)            
         training_time = format_time(time.time() - t0)
@@ -191,6 +195,7 @@ def train_model(epochs, model, train_dataloader, validation_dataloader, optimize
                 output = model(b_input_ids, 
                                 attention_mask=b_input_mask,
                                 labels=b_labels)
+                
                 loss, logits = output
                 '''
                 loss = output.loss
@@ -232,10 +237,40 @@ def train_model(epochs, model, train_dataloader, validation_dataloader, optimize
     gradient_df.to_csv('gradient_tracking.csv', index=False)
 
     return training_stats
+############################# Inference process  #############################
+def inf(model, data_loader):
+    model.eval()  
+    predictions, true_labels = [], []
 
+    with torch.no_grad():
+        start_time = time.time()
+        for batch in data_loader:
+            b_input_ids = batch[0].cuda()  
+            b_attention_mask = batch[1].cuda()  
+            b_labels = batch[2].cuda()  
+    
+            outputs = model(b_input_ids, attention_mask=b_attention_mask)
+
+            logits = outputs[0]    
+            logits = outputs.logits 
+
+            preds = torch.argmax(logits, dim=1).detach().cpu().numpy()
+            predictions.extend(preds)  
+            true_labels.extend(b_labels.detach().cpu().numpy()) 
+
+        end_time = time.time()
+        inference_time = end_time - start_time  
+        print(f"Inference Time: {inference_time:.4f} seconds")
+
+    return predictions, true_labels
 ############################# main #############################
 print("Training BERT model...")
 training_stats = train_model(epochs, model, train_dataloader, validation_dataloader, optimizer, scheduler)
+
+predictions, true_labels = inf(model, validation_dataloader)
+accuracy = accuracy_score(true_labels, predictions)
+print(f"Infered Validation Accuracy: {accuracy:.4f}")
+print(classification_report(true_labels, predictions, target_names=["unacceptable", "acceptable"]))
 
 pd.set_option('display.precision', 2)
 df_stats = pd.DataFrame(data=training_stats)

@@ -393,8 +393,8 @@ print(mixed_qat_model)
 
 mixed_qat_model.cuda()
 optimizer = AdamW(mixed_qat_model.parameters(),
-                    lr = 3e-4, # args.learning_rate - default is 5e-5, our notebook had 2e-5
-                    eps = 1e-6 # args.adam_epsilon  - default is 1e-8.
+                    lr = 1e-4, # args.learning_rate - default is 5e-5, our notebook had 2e-5
+                    eps = 1e-8 # args.adam_epsilon  - default is 1e-8.
                     )
 scheduler = get_linear_schedule_with_warmup(optimizer,
                                             num_warmup_steps = 0, # Default value in run_glue.py
@@ -407,3 +407,21 @@ pd.set_option('display.precision', 2)
 df_stats = pd.DataFrame(data=training_stats)
 df_stats = df_stats.set_index('epoch')
 df_stats.to_csv('table_int_mix-8-4.csv')
+
+
+# bert_model.cuda()
+# optimizer = AdamW(bert_model.parameters(),
+#                     lr = 1e-5, # args.learning_rate - default is 5e-5, our notebook had 2e-5
+#                     weight_decay = 0.005
+#                     )
+# scheduler = get_linear_schedule_with_warmup(optimizer,
+#                                             num_warmup_steps = 0, # Default value in run_glue.py
+#                                             num_training_steps = total_steps
+#                                             )
+# # 이후 학습 과정에서 각 레이어별 QAT가 적용됩니다.
+# print("Training Mixed QAT BERT on CoLA...")
+# training_stats = train_model(epochs, bert_model, train_dataloader, validation_dataloader, optimizer, scheduler)
+# pd.set_option('display.precision', 2)
+# df_stats = pd.DataFrame(data=training_stats)
+# df_stats = df_stats.set_index('epoch')
+# df_stats.to_csv('table_fp32.csv')

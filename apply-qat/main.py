@@ -381,9 +381,11 @@ bert_model = BertForSequenceClassification.from_pretrained(
     output_hidden_states = False, # Whether the model returns all hidden-states.
 )
 
+from modules.range_tracker import HistogramRangeTracker
+range_tracker = HistogramRangeTracker(coverage=0.99)
 print("Original BERT model:")
 print(bert_model)
-mixed_qat_model = MixedQATBERT(bert_model, attention_bits=8, ffn_bits=4)
+mixed_qat_model = MixedQATBERT(bert_model, attention_bits=8, ffn_bits=4, range_tracker=range_tracker)
 print("Mixed QAT BERT model:")
 print(mixed_qat_model)
 

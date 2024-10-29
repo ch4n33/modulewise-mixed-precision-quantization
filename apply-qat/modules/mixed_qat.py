@@ -10,8 +10,11 @@ class MixedQATBERT(nn.Module):
         for layer in self.bert.bert.encoder.layer:
             layer.attention.self = apply_QAT(layer.attention.self, precision = attention_bits, mode = 'attention')
 
+            layer.attention.output.dense = apply_QAT(layer.attention.output.dense, precision = 8, mode = 'ffn')
             layer.intermediate.dense = apply_QAT(layer.intermediate.dense, precision = 4, mode = 'ffn')
             layer.output.dense = apply_QAT(layer.output.dense, precision = ffn_bits, mode = 'ffn')
+        # apply qat to embedding layers
+        self.bert.bert.embeddings.word_embeddings = apply_QAT(self.bert.bert.embeddings.word_embeddings, precision = 8, mode = 'embedding')
 
     # def forward(self, input_ids, attention_mask=None):
     #     return self.bert(input_ids, attention_mask)

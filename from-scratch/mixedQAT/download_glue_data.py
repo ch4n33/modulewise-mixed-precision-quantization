@@ -29,7 +29,7 @@ TASK2PATH = {"CoLA":'https://dl.fbaipublicfiles.com/glue/data/CoLA.zip',
              "SST":'https://dl.fbaipublicfiles.com/glue/data/SST-2.zip',
              'MRPC':'https://raw.githubusercontent.com/MegEngine/Models/master/official/nlp/bert/glue_data/MRPC/dev_ids.tsv',
              "QQP":'https://dl.fbaipublicfiles.com/glue/data/QQP-clean.zip',
-             "STS":'https://dl.fbaipublicfiles.com/glue/data/STS-B.zip'
+             #"STS":'https://dl.fbaipublicfiles.com/glue/data/STS-B.zip'
              #"MNLI":'https://dl.fbaipublicfiles.com/glue/data/MNLI.zip',
              #"QNLI":'https://dl.fbaipublicfiles.com/glue/data/QNLIv2.zip',
              #"RTE":'https://dl.fbaipublicfiles.com/glue/data/RTE.zip',

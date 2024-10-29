@@ -73,7 +73,12 @@ class weightQATBERT(nn.Module):
         ranges=  []
 
         for i, layer in enumerate(self.bert.bert.encoder.layer):  
-            ranges.append((i, 'att', self.getrange(layer.attention.self.query.weight)))
+            qq = self.getrange(layer.attention.self.query.weight)
+            kk = self.getrange(layer.attention.self.key.weight)
+            vv = self.getrange(layer.attention.self.value.weight)
+            att_range = max(qq,kk,vv)
+     
+            ranges.append((i, 'att', att_range))
             ranges.append((i, 'ffn', self.getrange(layer.intermediate.dense.weight)))
         
         ranges.sort(key=lambda x: x[2], reverse=True) #내림차순 정렬

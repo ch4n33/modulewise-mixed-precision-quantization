@@ -1,3 +1,4 @@
+import os
 import torch
 import pandas as pd
 
@@ -29,9 +30,9 @@ else:
 
 ############################# 데이터 준비 및 전처리 #############################
 
-dataset_name = "mrpc" # mrpc sst2 cola qqb
+dataset_name = "mrpc" # mrpc sst2 cola qqp
 dataset = load_dataset("glue", dataset_name) #using GLUE data
-print(f"Training Mixed QAT BERT on {dataset_name}")
+print(f"Training Mixed QAT BERT on {dataset_name} dataset")
 
 train_data = dataset["train"]
 val_data = dataset["validation"]
@@ -80,15 +81,18 @@ print(f'{len(test_dataset)} test samples')
 epochs = 4
 
 bert_model = BertForSequenceClassification.from_pretrained("google-bert/bert-base-uncased", num_labels = 2, output_attentions = False, output_hidden_states = False,)
-#model = BertForSequenceClassification.from_pretrained("/root/MRPC/", num_labels = 2, output_attentions = False, output_hidden_states = False,)
 '''
-mixed_qat_model = predifQATBERT(bert_model, attention_bits=8, ffn_bits=4) #레이어마다 att에 8비트, ffn에 4비트 양자화
+mixed_qat_model = predefQATBERT(bert_model, attention_bits=8, ffn_bits=4) #레이어마다 att에 8비트, ffn에 4비트 양자화
+mode = 'predefined'
+'''
 
 mixed_qat_model = weightQATBERT(bert_model, rate=0.7) #가중치 분포가 넓은 상위 rate%개의 sub-module을 8비트, 나머지 4비트 양자화
+mode = 'weight'
+
 '''
 mixed_qat_model = randQATBERT(bert_model, rate=0.7) #랜덤하게 rate%의 레이어를 전체 8비트 양자화.
-mode = 'randQAT'
-
+mode = 'random'
+'''
 
 mixed_qat_model.cuda()
 
@@ -103,16 +107,18 @@ scheduler = get_linear_schedule_with_warmup(optimizer,
                                             num_training_steps = total_steps
                                             )
 
-############################# Training and Validation #############################
+############################# Training, Validation, Inference #############################
 
 training_stats = train_model(epochs, mixed_qat_model, train_dataloader, validation_dataloader, test_dataloader, optimizer, scheduler)
-#epochs, mixed_qat_model, train_dataloader, validation_dataloader, optimizer, scheduler)
 
-
-############################# main #############################
 pd.set_option('display.precision', 2)
 df_stats = pd.DataFrame(data=training_stats)
 df_stats = df_stats.set_index('epoch')
-mode = 'randQAT'
-df_stats.to_csv(f'./results/{mode}.csv')
+
+results_dir = './results'
+
+if not os.path.exists(results_dir):
+    os.makedirs(results_dir)
+
+df_stats.to_csv(f'{results_dir}/{mode}.csv')
 

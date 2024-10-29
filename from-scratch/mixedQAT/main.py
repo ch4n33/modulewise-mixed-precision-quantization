@@ -3,11 +3,17 @@ import pandas as pd
 
 from torch.utils.data import TensorDataset, random_split, DataLoader, RandomSampler, SequentialSampler
 from transformers import BertTokenizer, BertForSequenceClassification, AdamW, get_linear_schedule_with_warmup
+from datasets import load_dataset
+from transformers import DataCollatorWithPadding, AutoTokenizer
 
 from modules.predefined_qat import predefQATBERT
 from modules.weight_qat import weightQATBERT
 from modules.rand_qat import randQATBERT
 from modules.train import train_model
+from modules.tokenizer import mytokenizer
+
+
+
 
 ############################# 실행 환경 설정 #############################
 if torch.cuda.is_available():       
@@ -22,70 +28,56 @@ else:
 
 
 ############################# 데이터 준비 및 전처리 #############################
-df = pd.read_csv("./cola_public/raw/in_domain_train.tsv", delimiter='\t', header=None, names=['sentence_source', 'label', 'label_notes', 'sentence'])
 
-sentences = df.sentence.values
-labels = df.label.values
+dataset_name = "mrpc" # mrpc sst2 cola qqb
+dataset = load_dataset("glue", dataset_name) #using GLUE data
+print(f"Training Mixed QAT BERT on {dataset_name}")
 
-print('Loading BERT tokenizer...')
-tokenizer = BertTokenizer.from_pretrained("google-bert/bert-base-uncased", do_lower_case=True) #xa option
-#tokenizer = BertTokenizer.from_pretrained("/root/MRPC/", do_lower_case=True) #jongchan option
+train_data = dataset["train"]
+val_data = dataset["validation"]
+test_data = dataset["test"]
 
-max_len = 0 #47 on CoLA
-for sent in sentences:
-    input_ids = tokenizer.encode(sent, add_special_tokens=True)
-    max_len = max(max_len, len(input_ids))
-
-print('Max sentence length: ', max_len)
+t = mytokenizer(dataset=dataset_name)
+encoded_dataset = dataset.map(t.select, batched=True) 
 
 input_ids = []
 attention_masks = []
 
-for sent in sentences:
-    encoded_dict = tokenizer.encode_plus(
-                        sent,                      # Sentence to encode.
-                        add_special_tokens = True, # Add '[CLS]' and '[SEP]'
-                        max_length = max_len,           # Pad & truncate all sentences.
-                        pad_to_max_length = True,
-                        return_attention_mask = True,   # Construct attn. masks.
-                        return_tensors = 'pt',     # Return pytorch tensors.
-                   )
-    
-    input_ids.append(encoded_dict['input_ids'])
-    attention_masks.append(encoded_dict['attention_mask'])
+def to_tensor_dataset(split_dataset):
+    input_ids = torch.tensor(split_dataset['input_ids'])
+    attention_masks = torch.tensor(split_dataset['attention_mask'])
+    labels = torch.tensor(split_dataset['label'])
+    return TensorDataset(input_ids, attention_masks, labels)
 
-# Convert the lists into tensors.
-input_ids = torch.cat(input_ids, dim=0)
-attention_masks = torch.cat(attention_masks, dim=0)
-labels = torch.tensor(labels)
-
-# Combine the training inputs into a TensorDataset.
-dataset = TensorDataset(input_ids, attention_masks, labels)
-
-train_size = int(0.9 * len(dataset)) 
-val_size = len(dataset) - train_size
-
-
-train_dataset, val_dataset = random_split(dataset, [train_size, val_size])
-
-print('{:>5,} training samples'.format(train_size))
-print('{:>5,} validation samples'.format(val_size))
+train_dataset = to_tensor_dataset(encoded_dataset['train'])
+val_dataset = to_tensor_dataset(encoded_dataset['validation'])
+test_dataset = to_tensor_dataset(encoded_dataset['test'])
 
 batch_size = 32
 
 train_dataloader = DataLoader(
-            train_dataset, 
-            sampler = RandomSampler(train_dataset), 
-            batch_size = batch_size
-        )
-validation_dataloader = DataLoader(
-            val_dataset, 
-            sampler = SequentialSampler(val_dataset), 
-            batch_size = batch_size
-        )
+    train_dataset, 
+    sampler=RandomSampler(train_dataset), 
+    batch_size=batch_size
+)
 
+validation_dataloader = DataLoader(
+    val_dataset, 
+    sampler=SequentialSampler(val_dataset), 
+    batch_size=batch_size
+)
+
+test_dataloader = DataLoader(
+    test_dataset, 
+    sampler=SequentialSampler(test_dataset), 
+    batch_size=batch_size
+)
+
+print(f'{len(train_dataset)} training samples')
+print(f'{len(val_dataset)} validation samples')
+print(f'{len(test_dataset)} test samples')
 ############################# BERT model 호출 및 준비 #############################
-epochs = 5
+epochs = 4
 
 bert_model = BertForSequenceClassification.from_pretrained("google-bert/bert-base-uncased", num_labels = 2, output_attentions = False, output_hidden_states = False,)
 #model = BertForSequenceClassification.from_pretrained("/root/MRPC/", num_labels = 2, output_attentions = False, output_hidden_states = False,)
@@ -95,8 +87,6 @@ mixed_qat_model = predifQATBERT(bert_model, attention_bits=8, ffn_bits=4) #레�
 mixed_qat_model = weightQATBERT(bert_model, rate=0.7) #가중치 분포가 넓은 상위 rate%개의 sub-module을 8비트, 나머지 4비트 양자화
 '''
 mixed_qat_model = randQATBERT(bert_model, rate=0.7) #랜덤하게 rate%의 레이어를 전체 8비트 양자화.
-
-
 
 
 mixed_qat_model.cuda()
@@ -113,8 +103,9 @@ scheduler = get_linear_schedule_with_warmup(optimizer,
                                             )
 
 ############################# Training and Validation #############################
-print("Training Mixed QAT BERT on CoLA...")
-training_stats = train_model(epochs, mixed_qat_model, train_dataloader, validation_dataloader, optimizer, scheduler)
+
+training_stats = train_model(epochs, mixed_qat_model, train_dataloader, validation_dataloader, test_dataloader, optimizer, scheduler)
+#epochs, mixed_qat_model, train_dataloader, validation_dataloader, optimizer, scheduler)
 
 
 ############################# main #############################

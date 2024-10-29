@@ -1,5 +1,6 @@
 import time
 import torch
+import psutil
 import random
 import numpy as np
 
@@ -7,6 +8,10 @@ from tqdm import tqdm
 
 from .util import format_time, flat_accuracy
 
+def memuse(): #get memory usage
+    gpu_memory = torch.cuda.memory_allocated() / (1024 ** 2) if torch.cuda.is_available() else 0
+    cpu_memory = psutil.Process().memory_info().rss / (1024 ** 2)  
+    return gpu_memory, cpu_memory
 
 def train_model(epochs, model, train_dataloader, validation_dataloader, optimizer, scheduler):
     # This training code is based on the `run_glue.py` script here:
@@ -67,7 +72,7 @@ def train_model(epochs, model, train_dataloader, validation_dataloader, optimize
             
             optimizer.step()
             scheduler.step()
-
+            
         avg_train_loss = total_train_loss / len(train_dataloader)            
         training_time = format_time(time.time() - t0)
 
@@ -114,6 +119,8 @@ def train_model(epochs, model, train_dataloader, validation_dataloader, optimize
         print("  Validation Loss: {0:.2f}".format(avg_val_loss))
         print("  Validation time: {:}".format(validation_time))
 
+        gmem, cmem = memuse() 
+
         training_stats.append(
             {
                 'epoch': epoch_i + 1,
@@ -121,7 +128,11 @@ def train_model(epochs, model, train_dataloader, validation_dataloader, optimize
                 'Valid. Loss': avg_val_loss,
                 'Valid. Accur.': avg_val_accuracy,
                 'Training Time': training_time,
-                'Validation Time': validation_time
+                'Validation Time': validation_time, 
+                'Total Memory use (MB)': gmem + cmem
+                #'GPU Memory (MB)': gmem,
+                #'CPU Memory (MB)': cmem,
+                
             }
         )
 

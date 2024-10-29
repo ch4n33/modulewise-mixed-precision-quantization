@@ -87,6 +87,7 @@ mixed_qat_model = predifQATBERT(bert_model, attention_bits=8, ffn_bits=4) #레�
 mixed_qat_model = weightQATBERT(bert_model, rate=0.7) #가중치 분포가 넓은 상위 rate%개의 sub-module을 8비트, 나머지 4비트 양자화
 '''
 mixed_qat_model = randQATBERT(bert_model, rate=0.7) #랜덤하게 rate%의 레이어를 전체 8비트 양자화.
+mode = 'randQAT'
 
 
 mixed_qat_model.cuda()
@@ -112,4 +113,6 @@ training_stats = train_model(epochs, mixed_qat_model, train_dataloader, validati
 pd.set_option('display.precision', 2)
 df_stats = pd.DataFrame(data=training_stats)
 df_stats = df_stats.set_index('epoch')
-df_stats.to_csv('table_int_mix-8-4.csv')
+mode = 'randQAT'
+df_stats.to_csv(f'./results/{mode}.csv')
+

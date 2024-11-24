@@ -22,6 +22,7 @@ class MixedQATBERT(nn.Module):
         # apply qat to embedding layers
         self.bert.bert.embeddings.word_embeddings = apply_QAT(self.bert.bert.embeddings.word_embeddings, precision = 8, mode = 'embedding', range_tracker = range_tracker, activation_tracker = activation_tracker)
 
+
     # def forward(self, input_ids, attention_mask=None):
     #     return self.bert(input_ids, attention_mask)
     def forward(self, input_ids, attention_mask=None, token_type_ids=None, labels=None):

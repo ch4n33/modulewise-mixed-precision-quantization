@@ -1,32 +1,16 @@
-
 import torch
 import torch.nn as nn
 from .round import STERoundFunction
 import math
-
-from .range_tracker import RangeTracker, MinMaxRangeTracker, EMAActivationRangeTracker
-
-from .range_tracker import RangeTracker
-def apply_QAT(layer, precision=8, mode='attention', range_tracker=None, activation_tracker = None):
+def apply_QAT(layer, precision=8, mode='attention'):
     class CustomQuantizationLayer(nn.Module):
         def __init__(self, layer, bits):
             super(CustomQuantizationLayer, self).__init__()
-            if (range_tracker is None) or (not isinstance(range_tracker, RangeTracker)):
-                raise ValueError("range_tracker should be an instance of RangeTracker")
-            if activation_tracker is None:
-                raise ValueError("activation_tracker should be a name of activation tracker\ne.g. 'MinMaxRangeTracker'")
             self.bits = bits
             self.layer = layer
             self.mode = mode  
             self.layer.requires_grad_(True)  # 양자화 레이어의 gradient 활성화
-            self.range_tracker = range_tracker
-            if (activation_tracker == 'MinMaxRangeTracker'):
-                self.activation_tracker = MinMaxRangeTracker()
-            elif (activation_tracker == 'EMAActivationRangeTracker'):
-                self.activation_tracker = EMAActivationRangeTracker()
-            else:
-                raise ValueError("activation_tracker should be a name of instance of RangeTracker, not {}".format(activation_tracker))
-
+        
         def calculate_scale_zp(self, min,max, qmin, qmax):
             with torch.no_grad():
                 scale = (max - min) / (qmax - qmin)
@@ -42,7 +26,7 @@ def apply_QAT(layer, precision=8, mode='attention', range_tracker=None, activati
         def apply_weight_fake_quant(self, layer, qmin, qmax):
             # weight의 min, max 값으로 scale, zero_point 계산
             weight = layer.weight
-            weight_scale, weight_zp = self.calculate_scale_zp(*self.range_tracker(weight), qmin, qmax)
+            weight_scale, weight_zp = self.calculate_scale_zp(weight.min(), weight.max(), qmin, qmax)
             quantized_weight = self.apply_fake_quant(weight, weight_scale, weight_zp, qmin, qmax)
             layer.weight = torch.nn.Parameter(quantized_weight) #quantized_weight
     class CustomQuantizationAttentionLayer(CustomQuantizationLayer):
@@ -83,13 +67,14 @@ def apply_QAT(layer, precision=8, mode='attention', range_tracker=None, activati
                 value_layer = self.layer.transpose_for_scores(self.layer.value(hidden_states))
 
             query_layer = self.layer.transpose_for_scores(mixed_query_layer)
-            query_scale, query_zp = self.calculate_scale_zp(*self.range_tracker(query_layer), qmin, qmax)
+
+            query_scale, query_zp = self.calculate_scale_zp(query_layer.min(), query_layer.max(), qmin, qmax)
             query_layer = self.apply_fake_quant(query_layer, query_scale, query_zp, qmin, qmax)
             
-            key_scale, key_zp = self.calculate_scale_zp(*self.range_tracker(key_layer), qmin, qmax)
+            key_scale, key_zp = self.calculate_scale_zp(key_layer.min(), key_layer.max(), qmin, qmax)
             key_layer = self.apply_fake_quant(key_layer, key_scale, key_zp, qmin, qmax)
             
-            value_scale, value_zp = self.calculate_scale_zp(*self.range_tracker(value_layer), qmin, qmax)
+            value_scale, value_zp = self.calculate_scale_zp(value_layer.min(), value_layer.max(), qmin, qmax)
             value_layer = self.apply_fake_quant(value_layer, value_scale, value_zp, qmin, qmax)
             # self.apply_weight_fake_quant(query_layer, qmin, qmax)
             # self.apply_weight_fake_quant(key_layer, qmin, qmax)
@@ -131,8 +116,6 @@ def apply_QAT(layer, precision=8, mode='attention', range_tracker=None, activati
                     attention_scores = attention_scores + relative_position_scores_query + relative_position_scores_key
 
             attention_scores = attention_scores / math.sqrt(self.layer.attention_head_size)
-            attn_s, attn_zp = self.activation_tracker(attention_scores)
-            attention_scores = self.apply_fake_quant(attention_scores, attn_s, attn_zp, qmin, qmax)
             if attention_mask is not None:
                 # Apply the attention mask is (precomputed for all layers in BertModel forward() function)
                 attention_scores = attention_scores + attention_mask
@@ -148,8 +131,7 @@ def apply_QAT(layer, precision=8, mode='attention', range_tracker=None, activati
             if head_mask is not None:
                 attention_probs = attention_probs * head_mask
             
-            attn_pb_scale, attn_pb_zp = self.calculate_scale_zp(*self.range_tracker(attention_probs), qmin, qmax)
-=======
+            attn_pb_scale, attn_pb_zp = self.calculate_scale_zp(attention_probs.min(), attention_probs.max(), qmin, qmax)
             attention_probs = self.apply_fake_quant(attention_probs, attn_pb_scale, attn_pb_zp, qmin, qmax)
 
             context_layer = torch.matmul(attention_probs, value_layer)
@@ -172,8 +154,6 @@ def apply_QAT(layer, precision=8, mode='attention', range_tracker=None, activati
             # 양자화된 weight 사용하여 FFN forward 연산 수행
             layer_output = self.layer(hidden_states, *args, **kwargs)
             
-            output_scale, output_zp = self.activation_tracker(layer_output)
-            layer_output = self.apply_fake_quant(layer_output, output_scale, output_zp, qmin, qmax)
             return layer_output
     class CustomQuantizationEmbeddingLayer(CustomQuantizationLayer):
         def forward(self, input_ids, *args, **kwargs):

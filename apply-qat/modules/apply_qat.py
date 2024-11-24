@@ -149,7 +149,6 @@ def apply_QAT(layer, precision=8, mode='attention', range_tracker=None, activati
                 attention_probs = attention_probs * head_mask
             
             attn_pb_scale, attn_pb_zp = self.calculate_scale_zp(*self.range_tracker(attention_probs), qmin, qmax)
-=======
             attention_probs = self.apply_fake_quant(attention_probs, attn_pb_scale, attn_pb_zp, qmin, qmax)
 
             context_layer = torch.matmul(attention_probs, value_layer)

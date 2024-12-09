@@ -71,3 +71,4 @@ class HistogramRangeTracker(RangeTracker):
   #     max_value = bin_edges[upper_idx]
       
   #   return min_value, max_value
+

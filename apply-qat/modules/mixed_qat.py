@@ -11,6 +11,7 @@ class MixedQATBERT(nn.Module):
             
         self.bert = model
         self.range_tracker = range_tracker
+
         self.activation_tracker = activation_tracker
         # 각 레이어마다 attention과 FFN에 다른 quantization 적용
         for layer in self.bert.bert.encoder.layer:

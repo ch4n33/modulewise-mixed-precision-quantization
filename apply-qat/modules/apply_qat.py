@@ -4,15 +4,17 @@ import torch.nn as nn
 from .round import STERoundFunction
 import math
 
+
 from .range_tracker import RangeTracker, MinMaxRangeTracker, EMAActivationRangeTracker
 
-from .range_tracker import RangeTracker
 def apply_QAT(layer, precision=8, mode='attention', range_tracker=None, activation_tracker = None):
+
     class CustomQuantizationLayer(nn.Module):
         def __init__(self, layer, bits):
             super(CustomQuantizationLayer, self).__init__()
             if (range_tracker is None) or (not isinstance(range_tracker, RangeTracker)):
                 raise ValueError("range_tracker should be an instance of RangeTracker")
+
             if activation_tracker is None:
                 raise ValueError("activation_tracker should be a name of activation tracker\ne.g. 'MinMaxRangeTracker'")
             self.bits = bits
@@ -20,12 +22,14 @@ def apply_QAT(layer, precision=8, mode='attention', range_tracker=None, activati
             self.mode = mode  
             self.layer.requires_grad_(True)  # 양자화 레이어의 gradient 활성화
             self.range_tracker = range_tracker
+
             if (activation_tracker == 'MinMaxRangeTracker'):
                 self.activation_tracker = MinMaxRangeTracker()
             elif (activation_tracker == 'EMAActivationRangeTracker'):
                 self.activation_tracker = EMAActivationRangeTracker()
             else:
                 raise ValueError("activation_tracker should be a name of instance of RangeTracker, not {}".format(activation_tracker))
+
 
         def calculate_scale_zp(self, min,max, qmin, qmax):
             with torch.no_grad():
@@ -149,6 +153,7 @@ def apply_QAT(layer, precision=8, mode='attention', range_tracker=None, activati
                 attention_probs = attention_probs * head_mask
             
             attn_pb_scale, attn_pb_zp = self.calculate_scale_zp(*self.range_tracker(attention_probs), qmin, qmax)
+
             attention_probs = self.apply_fake_quant(attention_probs, attn_pb_scale, attn_pb_zp, qmin, qmax)
 
             context_layer = torch.matmul(attention_probs, value_layer)
